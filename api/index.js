@@ -13,9 +13,7 @@ const cors = (res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
 };
 
-const json = (res, data, code = 200) => {
-  cors(res); res.status(code).json(data);
-};
+const json = (res, data, code = 200) => { cors(res); res.status(code).json(data); };
 
 const getUser = (req) => {
   try {
@@ -45,25 +43,22 @@ module.exports = async (req, res) => {
   const body = req.body || {};
   
   try {
-    // ===== LOGIN =====
+    // LOGIN
     if (path === '/login' && req.method === 'POST') {
       const { username, password, role } = body;
       if (!username || !password) return json(res, { error: 'Isi semua' }, 400);
-      
       if (role === 'admin') {
-        if (username === A_USER && password === A_PASS) {
+        if (username === A_USER && password === A_PASS)
           return json(res, { token: jwt.sign({ role: 'admin', username }, SECRET, { expiresIn: '7d' }), role: 'admin', username });
-        }
         return json(res, { error: 'Admin salah' }, 401);
       }
-      
       const { data: u } = await db.from('users').select('*').ilike('growid', username).maybeSingle();
       if (!u) return json(res, { error: 'User tidak ada' }, 401);
       if (!(await bcrypt.compare(password, u.password))) return json(res, { error: 'Password salah' }, 401);
       return json(res, { token: jwt.sign({ role: 'member', userId: u.id, username: u.growid }, SECRET, { expiresIn: '7d' }), role: 'member', username: u.growid });
     }
     
-    // ===== REGISTER =====
+    // REGISTER
     if (path === '/register' && req.method === 'POST') {
       const { username, password } = body;
       if (!username || !password) return json(res, { error: 'Isi semua' }, 400);
@@ -76,8 +71,8 @@ module.exports = async (req, res) => {
       return json(res, { success: true });
     }
     
-    // ===== ME =====
-    if (path === '/me' && req.method === 'GET') {
+    // ME
+    if (path === '/me') {
       const u = getUser(req);
       if (!u) return json(res, { error: 'Unauthorized' }, 401);
       const { data } = await db.from('users').select('id, growid, gems, wl, created_at').eq('id', u.userId).single();
@@ -85,13 +80,13 @@ module.exports = async (req, res) => {
       return json(res, data);
     }
     
-    // ===== BANNERS =====
-    if (path === '/banners' && req.method === 'GET') {
+    // BANNERS (public)
+    if (path === '/banners') {
       const { data } = await db.from('banners').select('*').order('id');
       return json(res, data || []);
     }
     
-    // ===== SPIN =====
+    // SPIN
     if (path === '/spin' && req.method === 'POST') {
       const u = getUser(req);
       if (!u) return json(res, { error: 'Unauthorized' }, 401);
@@ -114,15 +109,15 @@ module.exports = async (req, res) => {
       return json(res, { results, balance: up });
     }
     
-    // ===== INVENTORY =====
-    if (path === '/inventory' && req.method === 'GET') {
+    // INVENTORY
+    if (path === '/inventory') {
       const u = getUser(req);
       if (!u) return json(res, { error: 'Unauthorized' }, 401);
       const { data } = await db.from('inventory').select('*').eq('user_id', u.userId).order('obtained_at', { ascending: false }).limit(100);
       return json(res, data || []);
     }
     
-    // ===== ADMIN ROUTES =====
+    // ADMIN ROUTES
     if (path.startsWith('/admin/')) {
       const a = getAdmin(req);
       if (!a) return json(res, { error: 'Admin only' }, 401);
@@ -143,6 +138,17 @@ module.exports = async (req, res) => {
         return json(res, (us || []).map(u => ({ ...u, inv_count: m[u.id] || 0 })));
       }
       
+      if (sub === 'items') {
+        const { data } = await db.from('items').select('*').order('id');
+        return json(res, data || []);
+      }
+      
+      // ✅ FIX: Tambahin handler GET /admin/banners
+      if (sub === 'banners') {
+        const { data } = await db.from('banners').select('*').order('id');
+        return json(res, data || []);
+      }
+      
       if (sub === 'add-balance' && req.method === 'POST') {
         const { userId, gems = 0, wl = 0 } = body;
         const { data: u } = await db.from('users').select('gems, wl').eq('id', userId).single();
@@ -161,11 +167,6 @@ module.exports = async (req, res) => {
         await db.from('inventory').delete().eq('user_id', body.userId);
         await db.from('users').delete().eq('id', body.userId);
         return json(res, { success: true });
-      }
-      
-      if (sub === 'items') {
-        const { data } = await db.from('items').select('*').order('id');
-        return json(res, data || []);
       }
       
       if (sub === 'save-items' && req.method === 'POST') {
@@ -207,7 +208,7 @@ module.exports = async (req, res) => {
       }
     }
     
-    json(res, { error: 'Not found' }, 404);
+    json(res, { error: 'Not found: ' + path }, 404);
   } catch (e) {
     json(res, { error: e.message }, 500);
   }
